@@ -1,0 +1,540 @@
+closeDetail = document.getElementById('close-detail');
+const trashCan = document.getElementById('trash-can');
+const hiddenEasterEgg = document.getElementById('hidden-easter-egg');
+const menuTime = document.getElementById('menu-time');
+
+// Initialize the game
+function initGame() {
+    // Add starter elements to inventory
+    starterElements.forEach(element => {
+        gameState.inventory.add(element);
+    });
+    
+    // Update UI
+    updateInventory();
+    updateCraftingElements();
+    updateDiscoveredCount();
+    
+    // Set up event listeners
+    setupEventListeners();
+    
+    // Update time
+    updateTime();
+    setInterval(updateTime, 60000);
+}
+
+// Set up all event listeners
+function setupEventListeners() {
+    // Floppy disk loading
+    floppyDisk.addEventListener('click', loadGame);
+    
+    // Desktop icons
+    craftingIcon.addEventListener('click', () => toggleWindow(craftingWindow));
+    inventoryIcon.addEventListener('click', () => toggleWindow(craftingWindow));
+    
+    // Window controls
+    closeCrafting.addEventListener('click', () => toggleWindow(craftingWindow));
+    closeDetail.addEventListener('click', () => floppyDetail.classList.remove('show'));
+    
+    // Game controls
+    combineBtn.addEventListener('click', combineElements);
+    resetBtn.addEventListener('click', resetGame);
+    hintBtn.addEventListener('click', showHint);
+    ejectBtn.addEventListener('click', ejectGame);
+    
+    // Trash can
+    trashCan.addEventListener('click', clearSlots);
+    
+    // Hidden easter egg
+    hiddenEasterEgg.addEventListener('click', activateEasterEgg);
+    
+    // Drag and drop functionality
+    setupDragAndDrop();
+}
+
+// Load game with animation
+function loadGame() {
+    loadingStatus.textContent = 'Loading System...';
+    loadingProgress.style.width = '25%';
+    
+    setTimeout(() => {
+        loadingStatus.textContent = 'Initializing Crafting Engine...';
+        loadingProgress.style.width = '50%';
+    }, 800);
+    
+    setTimeout(() => {
+        loadingStatus.textContent = 'Loading Element Database...';
+        loadingProgress.style.width = '75%';
+    }, 1600);
+    
+    setTimeout(() => {
+        loadingStatus.textContent = 'Ready!';
+        loadingProgress.style.width = '100%';
+        
+        setTimeout(() => {
+            loadingScreen.classList.add('fade-out');
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+                macComputer.classList.add('active');
+                ejectBtn.style.display = 'block';
+                initGame();
+            }, 1000);
+        }, 500);
+    }, 2400);
+}
+
+// Update menu bar time
+function updateTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    menuTime.textContent = timeString;
+}
+
+// Toggle window visibility
+function toggleWindow(windowElement) {
+    if (windowElement.style.display === 'block') {
+        windowElement.style.display = 'none';
+    } else {
+        windowElement.style.display = 'block';
+        windowElement.style.zIndex = getHighestZIndex() + 1;
+    }
+}
+
+// Get highest z-index for window stacking
+function getHighestZIndex() {
+    return Array.from(document.querySelectorAll('*'))
+        .reduce((highest, el) => Math.max(highest, parseInt(window.getComputedStyle(el).zIndex)), 0);
+}
+
+// Setup drag and drop functionality
+function setupDragAndDrop() {
+    // Make elements draggable
+    document.addEventListener('mousedown', startDrag);
+    document.addEventListener('touchstart', startDrag, { passive: false });
+    
+    // Drop zones
+    slots.forEach(slot => {
+        slot.addEventListener('dragover', allowDrop);
+        slot.addEventListener('touchmove', handleTouchMove, { passive: false });
+        slot.addEventListener('touchend', handleTouchEnd);
+        slot.addEventListener('drop', handleDrop);
+    });
+    
+    // Trash can drop
+    trashCan.addEventListener('dragover', allowDrop);
+    trashCan.addEventListener('drop', handleTrashDrop);
+}
+
+// Drag and drop handlers
+function startDrag(e) {
+    let element;
+    if (e.type === 'mousedown') {
+        if (!e.target.classList.contains('element')) return;
+        element = e.target;
+    } else {
+        // Touch event
+        if (!e.target.classList.contains('element')) return;
+        element = e.target;
+        e.preventDefault();
+    }
+    
+    element.classList.add('dragging');
+    const elementName = element.textContent;
+    
+    const dragData = {
+        type: 'element',
+        name: elementName
+    };
+    
+    if (e.type === 'mousedown') {
+        e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
+    } else {
+        element.setAttribute('data-drag', JSON.stringify(dragData));
+    }
+}
+
+function allowDrop(e) {
+    e.preventDefault();
+    if (e.target.classList.contains('slot')) {
+        e.target.classList.add('highlight');
+    }
+}
+
+function handleTouchMove(e) {
+    e.preventDefault();
+}
+
+function handleTouchEnd(e) {
+    const draggingElement = document.querySelector('.element.dragging');
+    if (!draggingElement) return;
+    
+    const dragData = JSON.parse(draggingElement.getAttribute('data-drag'));
+    const touch = e.changedTouches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    
+    if (element && element.classList.contains('slot')) {
+        handleDrop({ target: element, dataTransfer: { getData: () => JSON.stringify(dragData) } });
+    }
+    
+    draggingElement.classList.remove('dragging');
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    const slot = e.target;
+    slot.classList.remove('highlight');
+    
+    let dragData;
+    if (e.dataTransfer) {
+        dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+    } else {
+        // Fallback for touch
+        const draggingElement = document.querySelector('.element.dragging');
+        if (draggingElement) {
+            dragData = JSON.parse(draggingElement.getAttribute('data-drag'));
+        }
+    }
+    
+    if (dragData && dragData.type === 'element') {
+        const elementName = dragData.name;
+        
+        // Find empty slot
+        const slotIndex = slots.findIndex(s => !gameState.craftingSlots[slots.indexOf(s)]);
+        if (slotIndex !== -1) {
+            const targetSlot = slots[slotIndex];
+            gameState.craftingSlots[slotIndex] = elementName;
+            targetSlot.textContent = elementName;
+            targetSlot.classList.add('filled');
+            
+            // Update combine button
+            updateCombineButton();
+        }
+    }
+}
+
+function handleTrashDrop(e) {
+    e.preventDefault();
+    clearSlots();
+}
+
+// Clear crafting slots
+function clearSlots() {
+    gameState.craftingSlots = [null, null];
+    slots.forEach(slot => {
+        slot.textContent = '';
+        slot.classList.remove('filled');
+    });
+    updateCombineButton();
+    resultSection.innerHTML = '<p>DRAG ELEMENTS TO SLOTS</p>';
+    resultSection.className = 'result-section';
+}
+
+// Update combine button state
+function updateCombineButton() {
+    const bothFilled = gameState.craftingSlots[0] && gameState.craftingSlots[1];
+    combineBtn.disabled = !bothFilled;
+}
+
+// Combine elements
+function combineElements() {
+    const [elem1, elem2] = gameState.craftingSlots;
+    
+    if (!elem1 || !elem2) return;
+    
+    // Try both combinations
+    const combination1 = `${elem1}+${elem2}`;
+    const combination2 = `${elem2}+${elem1}`;
+    
+    let result = gameState.combinations[combination1] || gameState.combinations[combination2];
+    
+    if (result) {
+        // Success
+        if (!gameState.inventory.has(result)) {
+            gameState.inventory.add(result);
+            resultSection.innerHTML = `<div class="new-element">✨ NEW ELEMENT: ${result} ✨</div>`;
+            resultSection.className = 'result-section success';
+            
+            // Check for achievements
+            checkAchievements();
+        } else {
+            resultSection.innerHTML = `<div>${elem1} + ${elem2} = ${result}</div><div>(Already discovered)</div>`;
+            resultSection.className = 'result-section';
+        }
+        
+        updateInventory();
+        updateCraftingElements();
+        updateDiscoveredCount();
+        
+        // Special effects for easter eggs
+        if (gameState.easterEggs[result]) {
+            resultSection.innerHTML += `<div class="secret-element">🌟 SECRET DISCOVERED! 🌟</div>`;
+        }
+    } else {
+        // Failure
+        resultSection.innerHTML = `<div>${elem1} + ${elem2} = ???</div><div>No combination found</div>`;
+        resultSection.className = 'result-section error';
+    }
+    
+    clearSlots();
+}
+
+// Update inventory display
+function updateInventory() {
+    inventoryContainer.innerHTML = '';
+    
+    Array.from(gameState.inventory).sort().forEach(element => {
+        const floppy = document.createElement('div');
+        floppy.className = 'inventory-floppy';
+        if (gameState.easterEggs[element]) {
+            floppy.classList.add('easter-egg');
+        }
+        
+        floppy.innerHTML = `
+            <div class="floppy-label">${element}</div>
+        `;
+        
+        floppy.addEventListener('click', () => showElementDetail(element));
+        inventoryContainer.appendChild(floppy);
+    });
+}
+
+// Update crafting elements display
+function updateCraftingElements() {
+    craftingElements.innerHTML = '';
+    
+    Array.from(gameState.inventory).sort().forEach(element => {
+        const elementDiv = document.createElement('div');
+        elementDiv.className = 'element';
+        if (gameState.easterEggs[element]) {
+            elementDiv.classList.add('easter-egg');
+        }
+        elementDiv.textContent = element;
+        elementDiv.draggable = true;
+        
+        craftingElements.appendChild(elementDiv);
+    });
+}
+
+// Update discovered count
+function updateDiscoveredCount() {
+    discoveredCount.textContent = gameState.inventory.size;
+}
+
+// Show element detail
+function showElementDetail(element) {
+    detailTitle.textContent = element;
+    
+    let description = gameState.elementDescriptions[element] || 'A mysterious element with unknown properties.';
+    let recipe = 'Unknown creation method';
+    
+    // Find recipe
+    for (const [combo, result] of Object.entries(gameState.combinations)) {
+        if (result === element) {
+            const [elem1, elem2] = combo.split('+');
+            recipe = `${elem1} + ${elem2}`;
+            break;
+        }
+    }
+    
+    let specialInfo = '';
+    if (gameState.easterEggs[element]) {
+        specialInfo = `<div class="detail-recipe"><strong>SPECIAL:</strong> ${gameState.easterEggs[element].effect}</div>`;
+    }
+    
+    detailContent.innerHTML = `
+        <p>${description}</p>
+        <div class="detail-recipe"><strong>RECIPE:</strong> ${recipe}</div>
+        ${specialInfo}
+    `;
+    
+    floppyDetail.classList.add('show');
+    floppyDetail.style.zIndex = getHighestZIndex() + 1;
+}
+
+// Show hint
+function showHint() {
+    const undiscovered = Object.values(gameState.combinations)
+        .filter(result => !gameState.inventory.has(result))
+        .filter((result, index, self) => self.indexOf(result) === index);
+    
+    if (undiscovered.length > 0) {
+        const randomHint = undiscovered[Math.floor(Math.random() * undiscovered.length)];
+        
+        // Find recipe for hint
+        let recipe = '';
+        for (const [combo, result] of Object.entries(gameState.combinations)) {
+            if (result === randomHint) {
+                const [elem1, elem2] = combo.split('+');
+                if (gameState.inventory.has(elem1) && gameState.inventory.has(elem2)) {
+                    recipe = `${elem1} + ${elem2}`;
+                    break;
+                }
+            }
+        }
+        
+        if (recipe) {
+            resultSection.innerHTML = `<div>💡 HINT: Try combining ${recipe}</div>`;
+            resultSection.className = 'result-section';
+        } else {
+            resultSection.innerHTML = `<div>💡 HINT: Discover more basic elements first</div>`;
+            resultSection.className = 'result-section';
+        }
+    } else {
+        resultSection.innerHTML = `<div>🎉 You've discovered everything!</div>`;
+        resultSection.className = 'result-section success';
+    }
+}
+
+// Reset game
+function resetGame() {
+    if (confirm('Are you sure you want to start a new game? All progress will be lost.')) {
+        gameState.inventory.clear();
+        gameState.craftingSlots = [null, null];
+        
+        starterElements.forEach(element => {
+            gameState.inventory.add(element);
+        });
+        
+        clearSlots();
+        updateInventory();
+        updateCraftingElements();
+        updateDiscoveredCount();
+        
+        resultSection.innerHTML = '<p>Game reset! Start crafting again.</p>';
+        resultSection.className = 'result-section';
+    }
+}
+
+// Eject game
+function ejectGame() {
+    macComputer.classList.remove('active');
+    ejectBtn.style.display = 'none';
+    loadingScreen.style.display = 'flex';
+    loadingScreen.classList.remove('fade-out');
+    loadingProgress.style.width = '0%';
+    loadingStatus.textContent = 'Ready to load';
+    
+    // Reset game state but keep inventory for now
+    clearSlots();
+}
+
+// Check achievements
+function checkAchievements() {
+    const total = gameState.inventory.size;
+    
+    if (!gameState.achievements['First Creation'] && total > starterElements.length) {
+        gameState.achievements['First Creation'] = true;
+        showAchievement('First Creation');
+    }
+    
+    if (!gameState.achievements['Master Crafter'] && total >= 20) {
+        gameState.achievements['Master Crafter'] = true;
+        showAchievement('Master Crafter');
+    }
+    
+    if (!gameState.achievements['Elemental Master'] && total >= 50) {
+        gameState.achievements['Elemental Master'] = true;
+        showAchievement('Elemental Master');
+    }
+    
+    // Check for easter eggs
+    const easterEggCount = Object.keys(gameState.easterEggs).filter(egg => 
+        gameState.inventory.has(egg)
+    ).length;
+    
+    if (!gameState.achievements['Easter Egg Hunter'] && easterEggCount >= 2) {
+        gameState.achievements['Easter Egg Hunter'] = true;
+        showAchievement('Easter Egg Hunter');
+    }
+    
+    if (!gameState.achievements['Digital God'] && gameState.inventory.has('God')) {
+        gameState.achievements['Digital God'] = true;
+        showAchievement('Digital God');
+    }
+}
+
+// Show achievement notification
+function showAchievement(achievement) {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: var(--mac-light-gray);
+        border: 3px solid var(--mac-black);
+        padding: 20px;
+        z-index: 10000;
+        text-align: center;
+        box-shadow: 4px 4px 0 var(--mac-darker-gray);
+    `;
+    notification.innerHTML = `
+        <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">ACHIEVEMENT UNLOCKED!</div>
+        <div style="font-size: 14px;">${achievement}</div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.remove();
+    }, 3000);
+}
+
+// Easter egg activation
+function activateEasterEgg() {
+    // Add a secret element directly to inventory
+    const secretElements = ['Computer', 'Apple', 'User', 'Time'];
+    const availableSecrets = secretElements.filter(el => !gameState.inventory.has(el));
+    
+    if (availableSecrets.length > 0) {
+        const secret = availableSecrets[0];
+        gameState.inventory.add(secret);
+        updateInventory();
+        updateCraftingElements();
+        updateDiscoveredCount();
+        
+        resultSection.innerHTML = `<div class="secret-element">🎮 SECRET UNLOCKED: ${secret} 🎮</div>`;
+        resultSection.className = 'result-section success';
+        
+        // Special animation
+        document.body.style.animation = 'secretGlow 2s';
+        setTimeout(() => {
+            document.body.style.animation = '';
+        }, 2000);
+    }
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Pre-load any saved game
+    const savedGame = localStorage.getItem('infiniteCraftSave');
+    if (savedGame) {
+        try {
+            const savedState = JSON.parse(savedGame);
+            gameState.inventory = new Set(savedState.inventory);
+            updateDiscoveredCount();
+        } catch (e) {
+            console.log('No valid save game found');
+        }
+    }
+    
+    // Auto-save game periodically
+    setInterval(() => {
+        const saveState = {
+            inventory: Array.from(gameState.inventory),
+            achievements: gameState.achievements
+        };
+        localStorage.setItem('infiniteCraftSave', JSON.stringify(saveState));
+    }, 30000);
+});
+
+// Add some CSS for the achievement animation
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes secretGlow {
+        0% { box-shadow: 0 0 10px var(--mac-purple); }
+        50% { box-shadow: 0 0 30px var(--mac-purple); }
+        100% { box-shadow: 0 0 10px var(--mac-purple); }
+    }
+`;
+document.head.appendChild(style);
